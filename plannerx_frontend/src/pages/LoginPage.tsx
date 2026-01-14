@@ -1,42 +1,99 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material";
 import { useAppStore } from "../store";
 
 export default function LoginPage() {
-  const login = useAppStore(s => s.login);
+  const login = useAppStore((s) => s.login);
+  const authError = useAppStore((s) => s.authError);
+  const clearAuthError = useAppStore((s) => s.clearAuthError);
+
   const navigate = useNavigate();
   const [u, setU] = useState("");
   const [p, setP] = useState("");
+  const [loading, setLoading] = useState(false);
 
   return (
-    <div className="h-full flex items-center justify-center bg-zinc-950">
-      <div className="w-96 bg-zinc-900 border border-zinc-800 rounded-xl p-8">
-        <div className="text-3xl font-semibold mb-6">Planner X</div>
+    <Box
+      sx={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        bgcolor: "background.default",
+        p: 2,
+      }}
+    >
+      <Card sx={{ width: 420 }}>
+        <CardContent sx={{ p: 4 }}>
+          <Stack spacing={2.5}>
+            <Box>
+              <Typography variant="h4" fontWeight={900}>
+                Planner X
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Sign in to continue
+              </Typography>
+            </Box>
 
-        <input
-          className="w-full mb-3 px-3 py-2 rounded bg-zinc-950 border border-zinc-800"
-          placeholder="Username"
-          value={u}
-          onChange={e => setU(e.target.value)}
-        />
-        <input
-          type="password"
-          className="w-full mb-4 px-3 py-2 rounded bg-zinc-950 border border-zinc-800"
-          placeholder="Password"
-          value={p}
-          onChange={e => setP(e.target.value)}
-        />
+            <TextField
+              label="Username"
+              placeholder="cfo / ceo / kam"
+              value={u}
+              onChange={(e) => {
+                setU(e.target.value);
+                if (authError) clearAuthError();
+              }}
+              fullWidth
+            />
 
-        <button
-          onClick={async () => {
-            await login(u, p);
-            navigate("/");
-          }}
-          className="w-full bg-white text-black py-2 rounded font-medium"
-        >
-          Sign in
-        </button>
-      </div>
-    </div>
+            <TextField
+              label="Password"
+              placeholder="PlannerX@123"
+              type="password"
+              value={p}
+              onChange={(e) => {
+                setP(e.target.value);
+                if (authError) clearAuthError();
+              }}
+              fullWidth
+            />
+
+            {authError ? <Alert severity="error">{authError}</Alert> : null}
+
+            <Button
+              variant="contained"
+              size="large"
+              disabled={loading}
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await login(u, p);
+                  navigate("/");
+                } catch {
+                  // authError is set in store; keep UI quiet here
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              {loading ? "Signing in..." : "Sign in"}
+            </Button>
+
+            <Typography variant="caption" color="text.secondary">
+              Demo: <b>cfo</b> / <b>PlannerX@123</b>
+            </Typography>
+          </Stack>
+        </CardContent>
+      </Card>
+    </Box>
   );
 }

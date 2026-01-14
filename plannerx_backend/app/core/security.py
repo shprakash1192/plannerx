@@ -8,12 +8,12 @@ from passlib.context import CryptContext
 
 from app.core.config import settings
 
-# Keep these names because deps_auth imports them
+# ✅ match your config.py names
 SECRET_KEY = settings.JWT_SECRET_KEY
-ALGORITHM = "HS256"  # simplest for now; you can make this configurable later
+ALGORITHM = "HS256"
 
-# Argon2 avoids Python 3.12 bcrypt/passlib issues
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+# ✅ no native deps needed (no cffi, no bcrypt)
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:
@@ -24,8 +24,16 @@ def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
 
 
-def create_access_token(subject: str, expires_minutes: Optional[int] = None) -> str:
-    minutes = expires_minutes if expires_minutes is not None else settings.JWT_EXPIRE_MINUTES
+def create_access_token(
+    sub: str,
+    extra: Optional[dict] = None,
+    expires_minutes: Optional[int] = None,
+) -> str:
+    minutes = expires_minutes or settings.JWT_EXPIRE_MINUTES
     expire = datetime.utcnow() + timedelta(minutes=minutes)
-    payload: Dict[str, Any] = {"sub": subject, "exp": expire}
+
+    payload: Dict[str, Any] = {"sub": sub, "exp": expire}
+    if extra:
+        payload.update(extra)
+
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
