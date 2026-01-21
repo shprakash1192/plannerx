@@ -89,7 +89,7 @@ export default function LoginPage() {
             </Button>
 
             <Typography variant="caption" color="text.secondary">
-              Demo: <b>cfo</b> / <b>PlannerX@123</b>
+                 <b>Welcome</b> / <b>Plan for the future</b>
             </Typography>
           </Stack>
         </CardContent>

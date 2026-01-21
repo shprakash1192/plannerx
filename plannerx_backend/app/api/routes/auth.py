@@ -1,9 +1,11 @@
 # app/api/routes/auth.py
 import traceback
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db
+from app.api.deps_auth import get_current_user   # ✅ use the SAME one as other routes
 from app.core.security import verify_password, create_access_token, hash_password
 from app.models.user import User
 from app.schemas.auth import LoginRequest, LoginResponse
@@ -29,10 +31,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
         token = create_access_token(
             sub=user.email,
-            extra={
-                "role": user.role,
-                "company_id": user.company_id,
-            },
+            extra={"role": user.role, "company_id": user.company_id},
         )
 
         return {
@@ -46,6 +45,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
                 "companyId": user.company_id,
                 "forcePasswordChange": bool(user.force_password_change),
                 "permissions": user.permissions or {},
+                "isActive": bool(user.is_active),
             },
         }
 
@@ -71,20 +71,33 @@ def me(user: User = Depends(get_current_user)):
     }
 
 
+class ChangePasswordPayload(BaseModel):
+    new_password: str
+
+
 @router.post("/change-password")
 def change_password(
-    new_password: str,
+    payload: ChangePasswordPayload,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # Basic guardrails (optional but helpful)
-    if not new_password or len(new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    try:
+        new_password = (payload.new_password or "").strip()
 
-    user.password_hash = hash_password(new_password)
-    user.force_password_change = False
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+        if len(new_password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
-    return {"ok": True}
+        user.password_hash = hash_password(new_password)
+        user.force_password_change = False
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        return {"ok": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("CHANGE PASSWORD ERROR:")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Change password failed: {str(e)}")

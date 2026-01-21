@@ -1,22 +1,21 @@
-from sqlalchemy import Column, BigInteger, String, Boolean, TIMESTAMP
-from sqlalchemy.sql import func
-from app.db.base import Base
+# app/models/company.py
+from sqlalchemy import Column, Integer, String, Boolean
+from app.db.session import Base
 
 class Company(Base):
     __tablename__ = "companies"
 
-    company_id = Column(BigInteger, primary_key=True, index=True)
-    company_code = Column(String, nullable=True)  # optional if you have it
-    company_name = Column(String, nullable=False)
+    company_id = Column(Integer, primary_key=True, index=True)
+    company_code = Column(String(50), unique=True, nullable=False)
+    company_name = Column(String(255), nullable=False)
 
-    address1 = Column(String, nullable=True)
-    address2 = Column(String, nullable=True)
-    city = Column(String, nullable=True)
-    state = Column(String, nullable=True)
-    zip = Column(String, nullable=True)
+    address1 = Column(String(255))
+    address2 = Column(String(255))
+    city = Column(String(100))
+    state = Column(String(50))
+    zip = Column(String(20))
 
-    domain = Column(String, nullable=True, unique=True, index=True)
-    industry = Column(String, nullable=True)
+    domain = Column(String(255), unique=True)
+    industry = Column(String(100))
 
-    is_active = Column(Boolean, nullable=False, server_default="true")
-    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)

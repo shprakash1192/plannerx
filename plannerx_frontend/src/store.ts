@@ -299,8 +299,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Always start from fresh company to avoid stale merges
     const current = await get().loadCompany(companyId);
 
-    // We need company_code + company_name to avoid the NOT NULL issue.
-    // Since your UI Company type doesn't carry company_code, we keep it stable by fetching raw DTO once.
+    // keep domain stable unless you later allow editing (or your DTO allows nulls)
     const raw = await api<CompanyOutDTO>(PATHS.company(companyId), { token });
 
     const payload: CompanyUpdateDTO = {
@@ -313,7 +312,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       city: patch.city ?? current.city,
       state: patch.state ?? current.state,
       zip: patch.zip ?? current.zip,
-      domain: raw.domain ?? current.domain, // keep domain stable unless you later allow editing
+      domain: raw.domain ?? current.domain,
       industry: patch.industry ?? current.industry,
     };
 
@@ -391,19 +390,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (!token || !companyId) return;
 
-    // Always refetch company + users for active company
     await get().loadCompany(companyId);
     await get().loadCompanyUsers(companyId);
   },
 
+  // ✅ FIXED: send JSON body (not query param)
   changeMyPassword: async (newPassword) => {
     const token = get().token;
     if (!token) throw new Error("Not logged in");
 
-    await api<{ ok: boolean }>(
-      `${PATHS.changePassword}?new_password=${encodeURIComponent(newPassword)}`,
-      { method: "POST", token }
-    );
+    await api<{ ok: boolean }>(PATHS.changePassword, {
+      method: "POST",
+      token,
+      body: JSON.stringify({ new_password: newPassword }),
+    });
 
     const u = get().user;
     if (u) set({ user: { ...u, forcePasswordChange: false } });
