@@ -15,6 +15,8 @@ export type CompanyOutDTO = {
   industry: string | null;
 
   is_active: boolean;
+
+  calendar_sheet_id: number | null;   // ✅ ADD
 };
 
 export type CompanyCreateDTO = {
@@ -40,8 +42,10 @@ export type CompanyUpdateDTO = {
   zip?: string | null;
   domain?: string | null;
   industry?: string | null;
-};
 
+  calendar_sheet_id?: number | null;  // ✅ ADD
+  is_active?: boolean | null;         // ✅ ADD if not already present in backend
+};
 
 export type LoginResponseDTO = {
   access_token: string;
@@ -76,4 +80,32 @@ export type UserCreateForCompanyDTO = {
   temp_password: string;
   force_password_change?: boolean;
   permissions?: Record<string, unknown>;
+};
+
+export type SheetOutDTO = {
+  sheet_id: number;
+  company_id: number;
+  sheet_key: string;
+  sheet_name: string;
+  description: string | null;
+  model_json: Record<string, unknown>;
+  is_active: boolean;
+};
+
+export type SheetCreateDTO = {
+  sheet_key: string;
+  sheet_name: string;
+  description?: string | null;
+  model_json?: Record<string, unknown> | null;
+};
+
+export type SheetUpdateDTO = {
+  sheet_name?: string | null;
+  description?: string | null;
+  model_json?: Record<string, unknown> | null;
+  is_active?: boolean | null;
+};
+
+export type ChangePasswordDTO = {
+  new_password: string;
 };

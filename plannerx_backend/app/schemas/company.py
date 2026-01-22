@@ -21,6 +21,7 @@ class CompanyUpdate(BaseModel):
     zip: str | None = None
     domain: str | None = None
     industry: str | None = None
+    calendar_sheet_id: int | None = None
 
 class CompanyOut(BaseModel):
     company_id: int
@@ -34,3 +35,4 @@ class CompanyOut(BaseModel):
     domain: str | None
     industry: str | None
     is_active: bool
+    calendar_sheet_id: int | None = None

@@ -8,7 +8,17 @@ import type {
   LoginResponseDTO,
   UserCreateForCompanyDTO,
   UserOutDTO,
+  SheetOutDTO,
 } from "./api/dto";
+
+type CompanyOutWithCalendar = CompanyOutDTO & {
+  calendar_sheet_id?: number | null;
+};
+
+type CompanyUpdatePayload = CompanyUpdateDTO & {
+  is_active?: boolean;
+  calendar_sheet_id?: number;
+};
 
 export type UserRole = "SYSADMIN" | "COMPANY_ADMIN" | "CEO" | "CFO" | "KAM";
 
@@ -46,6 +56,17 @@ export type Company = {
   domain: string;
   industry: string;
   isActive: boolean;
+  calendarSheetId?: number;
+};
+
+export type Sheet = {
+  id: number;
+  companyId: number;
+  key: string;
+  name: string;
+  description?: string;
+  model: Record<string, unknown>;
+  isActive: boolean;
 };
 
 export type User = {
@@ -68,13 +89,13 @@ export type AppState = {
   companies: Company[];
   activeCompanyId: number | null;
 
-  // keep users in state so AdminUsersPage can read `companyUsers`
   companyUsers: User[];
 
   versions: { id: number; code: string; name: string }[];
   selectedVersionId: number;
 
   sheetKey: string | null;
+  sheets: Sheet[];
 
   // Auth
   login: (email: string, password: string) => Promise<void>;
@@ -89,9 +110,11 @@ export type AppState = {
   loadCompanies: () => Promise<void>;
   loadCompany: (companyId: number) => Promise<Company>;
   createCompany: (c: Omit<Company, "id" | "isActive">) => Promise<Company>;
+
+  // ✅ FIX: allow isActive + calendarSheetId updates from UI
   updateCompany: (
     companyId: number,
-    patch: Partial<Omit<Company, "id" | "domain" | "isActive">>
+    patch: Partial<Omit<Company, "id" | "domain">>
   ) => Promise<Company>;
 
   loadCompanyUsers: (companyId: number) => Promise<User[]>;
@@ -104,9 +127,16 @@ export type AppState = {
     permissions: UserPermissions;
   }) => Promise<User>;
 
-  // Fresh-data helper (what you asked for)
+  // Sheets
+  loadSheets: (companyId: number) => Promise<Sheet[]>;
+
+  // Calendar
+  importCalendar: (companyId: number, file: File) => Promise<void>;
+
+  // Fresh-data helper
   refreshActiveCompany: () => Promise<void>;
 
+  // Password
   changeMyPassword: (newPassword: string) => Promise<void>;
 
   // Misc
@@ -115,17 +145,20 @@ export type AppState = {
 };
 
 function mapCompanyDTO(c: CompanyOutDTO): Company {
+  const cc = c as CompanyOutWithCalendar;
+
   return {
-    id: c.company_id,
-    name: c.company_name,
-    address1: c.address1 ?? "",
-    address2: c.address2 ?? undefined,
-    city: c.city ?? "",
-    state: c.state ?? "",
-    zip: c.zip ?? "",
-    domain: c.domain ?? "",
-    industry: c.industry ?? "",
-    isActive: c.is_active,
+    id: cc.company_id,
+    name: cc.company_name,
+    address1: cc.address1 ?? "",
+    address2: cc.address2 ?? undefined,
+    city: cc.city ?? "",
+    state: cc.state ?? "",
+    zip: cc.zip ?? "",
+    domain: cc.domain ?? "",
+    industry: cc.industry ?? "",
+    isActive: cc.is_active,
+    calendarSheetId: cc.calendar_sheet_id ?? undefined,
   };
 }
 
@@ -142,6 +175,18 @@ function mapUserOutDTO(u: UserOutDTO): User {
   };
 }
 
+function mapSheetDTO(s: SheetOutDTO): Sheet {
+  return {
+    id: s.sheet_id,
+    companyId: s.company_id,
+    key: s.sheet_key,
+    name: s.sheet_name,
+    description: s.description ?? undefined,
+    model: s.model_json ?? {},
+    isActive: s.is_active,
+  };
+}
+
 const PATHS = {
   login: "/auth/login",
   me: "/auth/me",
@@ -149,7 +194,18 @@ const PATHS = {
   companies: "/companies",
   company: (companyId: number) => `/companies/${companyId}`,
   companyUsers: (companyId: number) => `/companies/${companyId}/users`,
+  companySheets: (companyId: number) => `/companies/${companyId}/sheets`,
+  companySheet: (companyId: number, sheetId: number) =>
+    `/companies/${companyId}/sheets/${sheetId}`,
+
+  // ✅ backend endpoint you added
+  calendarImport: (companyId: number) => `/companies/${companyId}/calendar/import`,
 };
+
+// ✅ use same origin as your api client typically uses
+const API_BASE =
+  import.meta.env.VITE_API_URL?.replace(/\/$/, "") ||
+  "http://127.0.0.1:8000";
 
 export const useAppStore = create<AppState>((set, get) => ({
   token: null,
@@ -165,6 +221,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedVersionId: 1,
 
   sheetKey: null,
+  sheets: [],
 
   clearAuthError: () => set({ authError: null }),
 
@@ -194,6 +251,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         authError: null,
         activeCompanyId: user.role === "SYSADMIN" ? null : user.companyId ?? null,
         companyUsers: [],
+        sheets: [],
       });
 
       if (user.role === "SYSADMIN") {
@@ -201,6 +259,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else if (user.companyId) {
         await get().loadCompany(user.companyId);
         await get().loadCompanyUsers(user.companyId);
+        await get().loadSheets(user.companyId);
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Login failed";
@@ -218,18 +277,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       sheetKey: null,
       companies: [],
       companyUsers: [],
+      sheets: [],
     }),
 
   selectCompany: (companyId) =>
     set({
       activeCompanyId: companyId,
       companyUsers: [],
+      sheets: [],
     }),
 
   clearCompanySelection: () =>
     set({
       activeCompanyId: null,
       companyUsers: [],
+      sheets: [],
     }),
 
   loadCompanies: async () => {
@@ -260,8 +322,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     const token = get().token;
     if (!token) throw new Error("Not logged in");
 
-    // IMPORTANT: company_code is NOT NULL in your DB.
-    // If your UI doesn't capture it yet, we derive a safe default from domain.
     const derivedCode =
       (c.domain || "")
         .trim()
@@ -296,25 +356,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     const token = get().token;
     if (!token) throw new Error("Not logged in");
 
-    // Always start from fresh company to avoid stale merges
     const current = await get().loadCompany(companyId);
-
-    // keep domain stable unless you later allow editing (or your DTO allows nulls)
     const raw = await api<CompanyOutDTO>(PATHS.company(companyId), { token });
 
-    const payload: CompanyUpdateDTO = {
-      company_name: patch.name ?? current.name,
-      address1: patch.address1 ?? current.address1,
-      address2:
-        (patch.address2 ?? current.address2)?.trim()
-          ? (patch.address2 ?? current.address2)!.trim()
-          : null,
-      city: patch.city ?? current.city,
-      state: patch.state ?? current.state,
-      zip: patch.zip ?? current.zip,
-      domain: raw.domain ?? current.domain,
-      industry: patch.industry ?? current.industry,
-    };
+  const payload: CompanyUpdatePayload = {
+  company_name: patch.name ?? current.name,
+  address1: patch.address1 ?? current.address1,
+  address2:
+    (patch.address2 ?? current.address2)?.trim()
+      ? (patch.address2 ?? current.address2)!.trim()
+      : null,
+  city: patch.city ?? current.city,
+  state: patch.state ?? current.state,
+  zip: patch.zip ?? current.zip,
+  domain: raw.domain ?? current.domain,
+  industry: patch.industry ?? current.industry,
+};
+
+// ✅ only send when explicitly intended
+if (typeof patch.isActive === "boolean") {
+  payload.is_active = patch.isActive;
+}
+
+if (typeof patch.calendarSheetId === "number") {
+  payload.calendar_sheet_id = patch.calendarSheetId;
+}
 
     const updated = await api<CompanyOutDTO>(PATHS.company(companyId), {
       method: "PATCH",
@@ -383,7 +449,63 @@ export const useAppStore = create<AppState>((set, get) => ({
     return created;
   },
 
-  // ✅ One-call “always fresh” helper
+  // ===== Sheets =====
+  loadSheets: async (companyId) => {
+    const token = get().token;
+    if (!token) throw new Error("Not logged in");
+
+    const rows = await api<SheetOutDTO[]>(PATHS.companySheets(companyId), { token });
+    const mapped = rows.map(mapSheetDTO);
+
+    // keep it simple: store the last loaded set
+    if (get().activeCompanyId === companyId) {
+      set({ sheets: mapped });
+    } else {
+      set({ sheets: mapped });
+    }
+
+    return mapped; // ✅ matches Promise<Sheet[]>
+  },
+
+  // ===== Calendar import (Excel upload) =====
+  importCalendar: async (companyId, file) => {
+    const token = get().token;
+    if (!token) throw new Error("Not logged in");
+    if (!file) throw new Error("File required");
+
+    const fd = new FormData();
+    // backend usually expects "file"
+    fd.append("file", file);
+
+    const resp = await fetch(`${API_BASE}${PATHS.calendarImport(companyId)}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        // NOTE: do NOT set Content-Type for multipart; browser sets boundary
+      },
+      body: fd,
+    });
+
+    if (!resp.ok) {
+      let detail = `Calendar import failed (${resp.status})`;
+      try {
+        const j = await resp.json();
+        if (typeof j?.detail === "string") detail = j.detail;
+      } catch {
+        // ignore
+      }
+      throw new Error(detail);
+    }
+
+    // After import, backend should have:
+    // - created/updated calendar sheet
+    // - set companies.calendar_sheet_id
+    // - possibly activated the company
+    await get().loadCompany(companyId);
+    await get().loadSheets(companyId);
+  },
+
+  // ✅ One-call “always fresh”
   refreshActiveCompany: async () => {
     const token = get().token;
     const companyId = get().activeCompanyId;
@@ -392,18 +514,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     await get().loadCompany(companyId);
     await get().loadCompanyUsers(companyId);
+    await get().loadSheets(companyId);
   },
 
-  // ✅ FIXED: send JSON body (not query param)
   changeMyPassword: async (newPassword) => {
     const token = get().token;
     if (!token) throw new Error("Not logged in");
 
-    await api<{ ok: boolean }>(PATHS.changePassword, {
-      method: "POST",
-      token,
-      body: JSON.stringify({ new_password: newPassword }),
-    });
+    await api<{ ok: boolean }>(
+      `${PATHS.changePassword}?new_password=${encodeURIComponent(newPassword)}`,
+      { method: "POST", token }
+    );
 
     const u = get().user;
     if (u) set({ user: { ...u, forcePasswordChange: false } });

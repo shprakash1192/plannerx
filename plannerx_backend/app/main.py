@@ -5,6 +5,9 @@ import app.db.base
 from app.api.routes.auth import router as auth_router
 from app.api.routes.companies import router as companies_router
 from app.api.routes.users import router as users_router
+from app.api.routes.sheets import router as sheets_router
+from app.api.routes.calendar import router as calendar_router
+
 
 
 app = FastAPI(title="PlannerX API", version="0.1.0")
@@ -29,3 +32,5 @@ def health():
 app.include_router(auth_router)
 app.include_router(companies_router)
 app.include_router(users_router)
+app.include_router(sheets_router)
+app.include_router(calendar_router)
