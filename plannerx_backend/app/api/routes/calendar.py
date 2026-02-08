@@ -23,6 +23,48 @@ def _assert_can_modify_calendar(user: User):
             detail="Calendar can only be modified by SYSADMIN or COMPANY_ADMIN",
         )
 
+@router.get("/{company_id}/calendar", tags=["calendar"])
+def list_calendar(
+    company_id: int,
+    limit: int = 5000,
+    offset: int = 0,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    ensure_company_scope(user, company_id)
+
+    # Safety limits (AG Grid will load a lot; but keep guardrails)
+    limit = min(max(limit, 1), 20000)
+    offset = max(offset, 0)
+
+    rows = db.execute(
+        text("""
+            SELECT
+              company_id,
+              date_id,
+              fiscal_year,
+              fiscal_quarter,
+              fiscal_month,
+              fiscal_week,
+              fiscal_yrwk,
+              fiscal_dow,
+              fiscal_dom,
+              iso_year,
+              iso_quarter,
+              iso_month,
+              iso_week,
+              iso_dow,
+              iso_dom,
+              day_name
+            FROM calendar
+            WHERE company_id = :cid
+            ORDER BY date_id
+            LIMIT :limit OFFSET :offset
+        """),
+        {"cid": company_id, "limit": limit, "offset": offset},
+    ).mappings().all()
+
+    return [dict(r) for r in rows]
 
 def _norm_header(v: Any) -> str:
     # normalize "Fiscal   Day of theMonth" -> "fiscal day of themonth"

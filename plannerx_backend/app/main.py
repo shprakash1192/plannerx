@@ -7,6 +7,8 @@ from app.api.routes.companies import router as companies_router
 from app.api.routes.users import router as users_router
 from app.api.routes.sheets import router as sheets_router
 from app.api.routes.calendar import router as calendar_router
+from app.api.routes.dimensions import router as dimensions_router
+from app.api.routes.dimensions_import import router as dimensions_import_router
 
 
 
@@ -34,3 +36,5 @@ app.include_router(companies_router)
 app.include_router(users_router)
 app.include_router(sheets_router)
 app.include_router(calendar_router)
+app.include_router(dimensions_router)
+app.include_router(dimensions_import_router)

@@ -1,3 +1,4 @@
+// Router.tsx
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import LoginPage from "./pages/LoginPage";
@@ -11,6 +12,10 @@ import SheetPage from "./pages/SheetPage";
 import AdminCompaniesPage from "./pages/admin/AdminCompaniesPage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
 import AdminCompanySettingsPage from "./pages/admin/AdminCompanySettingsPage";
+import AdminCompanyCalendarPage from "./pages/admin/AdminCompanyCalendarPage";
+
+import ModelSheetsPage from "./pages/model/ModelSheetsPage";
+import ModelDimensionsPage from "./pages/model/ModelDimensionsPage";
 
 import {
   RequireAuth,
@@ -22,8 +27,10 @@ import {
 } from "./guards";
 
 export const router = createBrowserRouter([
+  // Public
   { path: "/login", element: <LoginPage /> },
 
+  // Auth-required
   {
     path: "/change-password",
     element: (
@@ -33,7 +40,7 @@ export const router = createBrowserRouter([
     ),
   },
 
-  // SYSADMIN can reach this without company selected
+  // SYSADMIN can reach this even without a company selected
   {
     path: "/select-company",
     element: (
@@ -45,7 +52,7 @@ export const router = createBrowserRouter([
     ),
   },
 
-  // SYSADMIN can onboard companies only when NOT inside a company
+  // SYSADMIN onboarding (ONLY when no company is selected)
   {
     path: "/admin/companies",
     element: (
@@ -61,24 +68,7 @@ export const router = createBrowserRouter([
     ),
   },
 
-  // Company Settings: SYSADMIN (when tunneled) OR COMPANY_ADMIN
-  {
-    path: "/admin/company",
-    element: (
-      <RequireAuth>
-        <ForcePasswordChangeGate>
-          <RequireCompanyContext>
-            <RequireCompanyAdminOrSysAdmin>
-              <AppShell />
-            </RequireCompanyAdminOrSysAdmin>
-          </RequireCompanyContext>
-        </ForcePasswordChangeGate>
-      </RequireAuth>
-    ),
-    children: [{ index: true, element: <AdminCompanySettingsPage /> }],
-  },
-
-  // Normal app shell (company-context gated)
+  // Main app shell (requires company context)
   {
     path: "/",
     element: (
@@ -94,10 +84,56 @@ export const router = createBrowserRouter([
       { index: true, element: <HomePage /> },
       { path: "sheet/:sheetKey", element: <SheetPage /> },
 
-      // Company-scoped admin
-      { path: "admin/users", element: <AdminUsersPage /> },
+      // =========================
+      // Company Administration
+      // =========================
+      {
+        path: "admin/company-settings",
+        element: (
+          <RequireCompanyAdminOrSysAdmin>
+            <AdminCompanySettingsPage />
+          </RequireCompanyAdminOrSysAdmin>
+        ),
+      },
+      {
+        path: "admin/users",
+        element: (
+          <RequireCompanyAdminOrSysAdmin>
+            <AdminUsersPage />
+          </RequireCompanyAdminOrSysAdmin>
+        ),
+      },
+      {
+        path: "admin/company-calendar",
+        element: (
+          <RequireCompanyAdminOrSysAdmin>
+            <AdminCompanyCalendarPage />
+          </RequireCompanyAdminOrSysAdmin>
+        ),
+      },
+
+      // =========================
+      // Model
+      // =========================
+      {
+        path: "model/sheets",
+        element: (
+          <RequireCompanyAdminOrSysAdmin>
+            <ModelSheetsPage />
+          </RequireCompanyAdminOrSysAdmin>
+        ),
+      },
+      {
+        path: "model/dimensions",
+        element: (
+          <RequireCompanyAdminOrSysAdmin>
+            <ModelDimensionsPage />
+          </RequireCompanyAdminOrSysAdmin>
+        ),
+      },
     ],
   },
 
+  // Fallback
   { path: "*", element: <Navigate to="/" replace /> },
 ]);

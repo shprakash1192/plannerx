@@ -2,22 +2,49 @@
 import { create } from "zustand";
 import { api } from "./api/client";
 import type {
+  CalendarRowDTO,
   CompanyCreateDTO,
   CompanyOutDTO,
   CompanyUpdateDTO,
   LoginResponseDTO,
+  SheetOutDTO,
   UserCreateForCompanyDTO,
   UserOutDTO,
-  SheetOutDTO,
+  DimensionOutDTO,
+  DimensionCreateDTO,
+  DimensionValueOutDTO,
+  DimensionValueCreateDTO,
+  DimensionUpdateDTO,
+  DimensionValueUpdateDTO,
+  DimensionsImportResponse
 } from "./api/dto";
-
-type CompanyOutWithCalendar = CompanyOutDTO & {
-  calendar_sheet_id?: number | null;
-};
 
 type CompanyUpdatePayload = CompanyUpdateDTO & {
   is_active?: boolean;
   calendar_sheet_id?: number;
+};
+
+export type CalendarRow = {
+  companyId: number;
+  dateId: string;
+
+  fiscalYear: number;
+  fiscalQuarter: number;
+  fiscalMonth: number;
+  fiscalWeek: number;
+  fiscalYrwk: string;
+
+  fiscalDow: number;
+  fiscalDom: number;
+
+  isoYear: number;
+  isoQuarter: number;
+  isoMonth: number;
+  isoWeek: number;
+  isoDow: number;
+  isoDom: number;
+
+  dayName: string;
 };
 
 export type UserRole = "SYSADMIN" | "COMPANY_ADMIN" | "CEO" | "CFO" | "KAM";
@@ -80,6 +107,29 @@ export type User = {
   permissions?: UserPermissions;
 };
 
+export type DimensionDataType = "TEXT" | "NUMBER" | "DATE";
+
+export type Dimension = {
+  id: number;
+  companyId: number;
+  key: string;
+  name: string;
+  description?: string;
+  dataType: DimensionDataType;
+  isActive: boolean;
+};
+
+export type DimensionValue = {
+  id: number;
+  companyId: number;
+  dimensionId: number;
+  key: string;
+  name: string;
+  sortOrder?: number;
+  attributes: Record<string, unknown>;
+  isActive: boolean;
+};
+
 export type AppState = {
   token: string | null;
 
@@ -97,6 +147,14 @@ export type AppState = {
   sheetKey: string | null;
   sheets: Sheet[];
 
+  // Calendar
+  calendarRows: CalendarRow[];
+
+  // Dimensions
+  dimensions: Dimension[];
+  dimensionValues: DimensionValue[];
+  selectedDimensionId: number | null;
+
   // Auth
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -106,17 +164,16 @@ export type AppState = {
   selectCompany: (companyId: number) => void;
   clearCompanySelection: () => void;
 
-  // Backend actions
+  // Companies
   loadCompanies: () => Promise<void>;
   loadCompany: (companyId: number) => Promise<Company>;
   createCompany: (c: Omit<Company, "id" | "isActive">) => Promise<Company>;
-
-  // ✅ FIX: allow isActive + calendarSheetId updates from UI
   updateCompany: (
     companyId: number,
     patch: Partial<Omit<Company, "id" | "domain">>
   ) => Promise<Company>;
 
+  // Users
   loadCompanyUsers: (companyId: number) => Promise<User[]>;
   createUserForActiveCompany: (u: {
     username: string;
@@ -132,6 +189,56 @@ export type AppState = {
 
   // Calendar
   importCalendar: (companyId: number, file: File) => Promise<void>;
+  loadCalendar: (companyId: number) => Promise<CalendarRow[]>;
+
+  // Dimensions
+  loadDimensions: (companyId: number) => Promise<Dimension[]>;
+  createDimension: (
+    companyId: number,
+    payload: {
+      key: string;
+      name: string;
+      description?: string;
+      dataType?: DimensionDataType;
+    }
+  ) => Promise<Dimension>;
+
+  updateDimension: (
+    companyId: number,
+    dimensionId: number,
+    patch: {
+      name?: string;
+      description?: string | null;
+      dataType?: DimensionDataType;
+      isActive?: boolean;
+    }
+  ) => Promise<Dimension>;
+
+  loadDimensionValues: (companyId: number, dimensionId: number) => Promise<DimensionValue[]>;
+  createDimensionValue: (
+    companyId: number,
+    dimensionId: number,
+    payload: {
+      key: string;
+      name: string;
+      sortOrder?: number;
+      attributes?: Record<string, unknown>;
+    }
+  ) => Promise<DimensionValue>;
+
+  updateDimensionValue: (
+    companyId: number,
+    dimensionId: number,
+    valueId: number,
+    patch: {
+      name?: string;
+      sortOrder?: number | null;
+      attributes?: Record<string, unknown> | null;
+      isActive?: boolean;
+    }
+  ) => Promise<DimensionValue>;
+
+  selectDimension: (dimensionId: number | null) => void;
 
   // Fresh-data helper
   refreshActiveCompany: () => Promise<void>;
@@ -142,23 +249,30 @@ export type AppState = {
   // Misc
   setSheet: (k: string | null) => void;
   setVersion: (id: number) => void;
+
+  importDimensionsExcel: (companyId: number, file: File) => Promise<DimensionsImportResponse>;
 };
 
-function mapCompanyDTO(c: CompanyOutDTO): Company {
-  const cc = c as CompanyOutWithCalendar;
+function normalizeDimensionDataType(v: unknown): DimensionDataType {
+  const s = String(v ?? "").trim().toUpperCase();
+  if (s === "NUMBER") return "NUMBER";
+  if (s === "DATE") return "DATE";
+  return "TEXT";
+}
 
+function mapCompanyDTO(c: CompanyOutDTO): Company {
   return {
-    id: cc.company_id,
-    name: cc.company_name,
-    address1: cc.address1 ?? "",
-    address2: cc.address2 ?? undefined,
-    city: cc.city ?? "",
-    state: cc.state ?? "",
-    zip: cc.zip ?? "",
-    domain: cc.domain ?? "",
-    industry: cc.industry ?? "",
-    isActive: cc.is_active,
-    calendarSheetId: cc.calendar_sheet_id ?? undefined,
+    id: c.company_id,
+    name: c.company_name,
+    address1: c.address1 ?? "",
+    address2: c.address2 ?? undefined,
+    city: c.city ?? "",
+    state: c.state ?? "",
+    zip: c.zip ?? "",
+    domain: c.domain ?? "",
+    industry: c.industry ?? "",
+    isActive: c.is_active,
+    calendarSheetId: c.calendar_sheet_id ?? undefined,
   };
 }
 
@@ -187,26 +301,90 @@ function mapSheetDTO(s: SheetOutDTO): Sheet {
   };
 }
 
+function mapCalendarDTO(r: CalendarRowDTO): CalendarRow {
+  return {
+    companyId: r.company_id,
+    dateId: r.date_id,
+
+    fiscalYear: r.fiscal_year,
+    fiscalQuarter: r.fiscal_quarter,
+    fiscalMonth: r.fiscal_month,
+    fiscalWeek: r.fiscal_week,
+    fiscalYrwk: String(r.fiscal_yrwk ?? ""),
+
+    fiscalDow: r.fiscal_dow,
+    fiscalDom: r.fiscal_dom,
+
+    isoYear: r.iso_year,
+    isoQuarter: r.iso_quarter,
+    isoMonth: r.iso_month,
+    isoWeek: r.iso_week,
+    isoDow: r.iso_dow,
+    isoDom: r.iso_dom,
+
+    dayName: r.day_name,
+  };
+}
+
+function mapDimensionDTO(d: DimensionOutDTO): Dimension {
+  return {
+    id: d.dimension_id,
+    companyId: d.company_id,
+    key: d.dimension_key,
+    name: d.dimension_name,
+    description: d.description ?? undefined,
+    dataType: normalizeDimensionDataType(d.data_type),
+    isActive: d.is_active,
+  };
+}
+
+function mapDimensionValueDTO(v: DimensionValueOutDTO): DimensionValue {
+  return {
+    id: v.dimension_value_id,
+    companyId: v.company_id,
+    dimensionId: v.dimension_id,
+    key: v.value_key,
+    name: v.value_name,
+    sortOrder: v.sort_order ?? undefined,
+    attributes: v.attributes_json ?? {},
+    isActive: v.is_active,
+  };
+}
+
 const PATHS = {
   login: "/auth/login",
-  me: "/auth/me",
   changePassword: "/auth/change-password",
   companies: "/companies",
   company: (companyId: number) => `/companies/${companyId}`,
   companyUsers: (companyId: number) => `/companies/${companyId}/users`,
   companySheets: (companyId: number) => `/companies/${companyId}/sheets`,
-  companySheet: (companyId: number, sheetId: number) =>
-    `/companies/${companyId}/sheets/${sheetId}`,
 
-  // ✅ backend endpoint you added
   calendarImport: (companyId: number) => `/companies/${companyId}/calendar/import`,
+  companyCalendar: (companyId: number) => `/companies/${companyId}/calendar`,
+
+  companyDimensions: (companyId: number) => `/companies/${companyId}/dimensions`,
+
+  dimensionValues: (companyId: number, dimensionId: number) =>
+    `/companies/${companyId}/dimensions/${dimensionId}/values`,
+
+  dimension: (companyId: number, dimensionId: number) =>
+    `/companies/${companyId}/dimensions/${dimensionId}`,
+
+  dimensionValue: (companyId: number, dimensionId: number, valueId: number) =>
+    `/companies/${companyId}/dimensions/${dimensionId}/values/${valueId}`,
+
+  importDimensionsExcel: (companyId: number) => `/companies/${companyId}/dimensions/import`,
+
 };
 
-// ✅ use same origin as your api client typically uses
 const API_BASE =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, "") ||
-  "http://127.0.0.1:8000";
+  import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
 
+function stripNulls<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== null && v !== undefined)
+  ) as Partial<T>;
+}
 export const useAppStore = create<AppState>((set, get) => ({
   token: null,
 
@@ -222,6 +400,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   sheetKey: null,
   sheets: [],
+
+  calendarRows: [],
+
+  dimensions: [],
+  dimensionValues: [],
+  selectedDimensionId: null,
 
   clearAuthError: () => set({ authError: null }),
 
@@ -252,6 +436,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeCompanyId: user.role === "SYSADMIN" ? null : user.companyId ?? null,
         companyUsers: [],
         sheets: [],
+        calendarRows: [],
+        dimensions: [],
+        dimensionValues: [],
+        selectedDimensionId: null,
       });
 
       if (user.role === "SYSADMIN") {
@@ -260,6 +448,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         await get().loadCompany(user.companyId);
         await get().loadCompanyUsers(user.companyId);
         await get().loadSheets(user.companyId);
+        await get().loadCalendar(user.companyId);
+        await get().loadDimensions(user.companyId);
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Login failed";
@@ -278,6 +468,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       companies: [],
       companyUsers: [],
       sheets: [],
+      calendarRows: [],
+      dimensions: [],
+      dimensionValues: [],
+      selectedDimensionId: null,
     }),
 
   selectCompany: (companyId) =>
@@ -285,6 +479,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeCompanyId: companyId,
       companyUsers: [],
       sheets: [],
+      calendarRows: [],
+      dimensions: [],
+      dimensionValues: [],
+      selectedDimensionId: null,
     }),
 
   clearCompanySelection: () =>
@@ -292,6 +490,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeCompanyId: null,
       companyUsers: [],
       sheets: [],
+      calendarRows: [],
+      dimensions: [],
+      dimensionValues: [],
+      selectedDimensionId: null,
     }),
 
   loadCompanies: async () => {
@@ -359,28 +561,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     const current = await get().loadCompany(companyId);
     const raw = await api<CompanyOutDTO>(PATHS.company(companyId), { token });
 
-  const payload: CompanyUpdatePayload = {
-  company_name: patch.name ?? current.name,
-  address1: patch.address1 ?? current.address1,
-  address2:
-    (patch.address2 ?? current.address2)?.trim()
-      ? (patch.address2 ?? current.address2)!.trim()
-      : null,
-  city: patch.city ?? current.city,
-  state: patch.state ?? current.state,
-  zip: patch.zip ?? current.zip,
-  domain: raw.domain ?? current.domain,
-  industry: patch.industry ?? current.industry,
-};
+    const payload: CompanyUpdatePayload = {
+      company_name: patch.name ?? current.name,
+      address1: patch.address1 ?? current.address1,
+      address2:
+        (patch.address2 ?? current.address2)?.trim()
+          ? (patch.address2 ?? current.address2)!.trim()
+          : null,
+      city: patch.city ?? current.city,
+      state: patch.state ?? current.state,
+      zip: patch.zip ?? current.zip,
+      domain: raw.domain ?? current.domain,
+      industry: patch.industry ?? current.industry,
+    };
 
-// ✅ only send when explicitly intended
-if (typeof patch.isActive === "boolean") {
-  payload.is_active = patch.isActive;
-}
-
-if (typeof patch.calendarSheetId === "number") {
-  payload.calendar_sheet_id = patch.calendarSheetId;
-}
+    if (typeof patch.isActive === "boolean") payload.is_active = patch.isActive;
+    if (typeof patch.calendarSheetId === "number") payload.calendar_sheet_id = patch.calendarSheetId;
 
     const updated = await api<CompanyOutDTO>(PATHS.company(companyId), {
       method: "PATCH",
@@ -389,10 +585,7 @@ if (typeof patch.calendarSheetId === "number") {
     });
 
     const ui = mapCompanyDTO(updated);
-    set((s) => ({
-      companies: s.companies.map((c) => (c.id === companyId ? ui : c)),
-    }));
-
+    set((s) => ({ companies: s.companies.map((c) => (c.id === companyId ? ui : c)) }));
     return ui;
   },
 
@@ -403,10 +596,7 @@ if (typeof patch.calendarSheetId === "number") {
     const rows = await api<UserOutDTO[]>(PATHS.companyUsers(companyId), { token });
     const mapped = rows.map(mapUserOutDTO);
 
-    if (get().activeCompanyId === companyId) {
-      set({ companyUsers: mapped });
-    }
-
+    if (get().activeCompanyId === companyId) set({ companyUsers: mapped });
     return mapped;
   },
 
@@ -440,49 +630,34 @@ if (typeof patch.calendarSheetId === "number") {
     });
 
     const created = mapUserOutDTO(row);
-
     set((s) => ({
-      companyUsers:
-        s.activeCompanyId === companyId ? [created, ...s.companyUsers] : s.companyUsers,
+      companyUsers: s.activeCompanyId === companyId ? [created, ...s.companyUsers] : s.companyUsers,
     }));
 
     return created;
   },
 
-  // ===== Sheets =====
   loadSheets: async (companyId) => {
     const token = get().token;
     if (!token) throw new Error("Not logged in");
 
     const rows = await api<SheetOutDTO[]>(PATHS.companySheets(companyId), { token });
     const mapped = rows.map(mapSheetDTO);
-
-    // keep it simple: store the last loaded set
-    if (get().activeCompanyId === companyId) {
-      set({ sheets: mapped });
-    } else {
-      set({ sheets: mapped });
-    }
-
-    return mapped; // ✅ matches Promise<Sheet[]>
+    set({ sheets: mapped });
+    return mapped;
   },
 
-  // ===== Calendar import (Excel upload) =====
   importCalendar: async (companyId, file) => {
     const token = get().token;
     if (!token) throw new Error("Not logged in");
     if (!file) throw new Error("File required");
 
     const fd = new FormData();
-    // backend usually expects "file"
     fd.append("file", file);
 
     const resp = await fetch(`${API_BASE}${PATHS.calendarImport(companyId)}`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        // NOTE: do NOT set Content-Type for multipart; browser sets boundary
-      },
+      headers: { Authorization: `Bearer ${token}` },
       body: fd,
     });
 
@@ -492,29 +667,170 @@ if (typeof patch.calendarSheetId === "number") {
         const j = await resp.json();
         if (typeof j?.detail === "string") detail = j.detail;
       } catch {
-        // ignore
+        try {
+          const t = await resp.text();
+          if (t) detail = t;
+        } catch {
+          // ignore
+        }
       }
       throw new Error(detail);
     }
 
-    // After import, backend should have:
-    // - created/updated calendar sheet
-    // - set companies.calendar_sheet_id
-    // - possibly activated the company
     await get().loadCompany(companyId);
     await get().loadSheets(companyId);
+    await get().loadCalendar(companyId);
   },
 
-  // ✅ One-call “always fresh”
+  loadCalendar: async (companyId) => {
+    const token = get().token;
+    if (!token) throw new Error("Not logged in");
+
+    const rows = await api<CalendarRowDTO[]>(
+      `${PATHS.companyCalendar(companyId)}?limit=20000&offset=0`,
+      { token }
+    );
+
+    const mapped = rows.map(mapCalendarDTO);
+    set({ calendarRows: mapped });
+    return mapped;
+  },
+
+  // ===== Dimensions =====
+  loadDimensions: async (companyId) => {
+    const token = get().token;
+    if (!token) throw new Error("Not logged in");
+
+    const rows = await api<DimensionOutDTO[]>(PATHS.companyDimensions(companyId), { token });
+    const mapped = rows.map(mapDimensionDTO);
+    set({ dimensions: mapped });
+    return mapped;
+  },
+
+  createDimension: async (companyId, payload) => {
+    const token = get().token;
+    if (!token) throw new Error("Not logged in");
+
+    const body: DimensionCreateDTO = {
+      dimension_key: payload.key,
+      dimension_name: payload.name,
+      description: payload.description ?? null,
+      data_type: payload.dataType ?? "TEXT",
+    };
+
+    const row = await api<DimensionOutDTO>(PATHS.companyDimensions(companyId), {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
+
+    const created = mapDimensionDTO(row);
+    set((s) => ({ dimensions: [created, ...s.dimensions] }));
+    return created;
+  },
+
+  updateDimension: async (companyId, dimensionId, patch) => {
+    const token = get().token;
+    if (!token) throw new Error("Not logged in");
+
+    const body: DimensionUpdateDTO = stripNulls({
+      dimension_name: patch.name ?? null,
+      description: patch.description ?? null,
+      data_type: patch.dataType ?? null,
+      is_active: typeof patch.isActive === "boolean" ? patch.isActive : null,
+    });
+
+    const row = await api<DimensionOutDTO>(PATHS.dimension(companyId, dimensionId), {
+      method: "PATCH",
+      token,
+      body: JSON.stringify(body),
+    });
+
+    const updated = mapDimensionDTO(row);
+    set((s) => ({
+      dimensions: s.dimensions.map((d) => (d.id === updated.id ? updated : d)),
+    }));
+    return updated;
+  },
+
+  loadDimensionValues: async (companyId, dimensionId) => {
+    const token = get().token;
+    if (!token) throw new Error("Not logged in");
+
+    const rows = await api<DimensionValueOutDTO[]>(
+      PATHS.dimensionValues(companyId, dimensionId),
+      { token }
+    );
+
+    const mapped = rows.map(mapDimensionValueDTO);
+    set({ dimensionValues: mapped, selectedDimensionId: dimensionId });
+    return mapped;
+  },
+
+  createDimensionValue: async (companyId, dimensionId, payload) => {
+    const token = get().token;
+    if (!token) throw new Error("Not logged in");
+
+    const body: DimensionValueCreateDTO = {
+      value_key: payload.key,
+      value_name: payload.name,
+      sort_order: payload.sortOrder ?? null,
+      attributes_json: payload.attributes ?? {},
+    };
+
+    const row = await api<DimensionValueOutDTO>(PATHS.dimensionValues(companyId, dimensionId), {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    });
+
+    const created = mapDimensionValueDTO(row);
+    set((s) => ({ dimensionValues: [created, ...s.dimensionValues] }));
+    return created;
+  },
+
+  updateDimensionValue: async (companyId, dimensionId, valueId, patch) => {
+    const token = get().token;
+    if (!token) throw new Error("Not logged in");
+
+    const body: DimensionValueUpdateDTO = stripNulls({
+      value_name: patch.name ?? null,
+      sort_order: patch.sortOrder ?? null,
+      attributes_json: patch.attributes ?? {},
+      is_active: typeof patch.isActive === "boolean" ? patch.isActive : null,
+    });
+
+    const row = await api<DimensionValueOutDTO>(
+      PATHS.dimensionValue(companyId, dimensionId, valueId),
+      {
+        method: "PATCH",
+        token,
+        body: JSON.stringify(body),
+      }
+    );
+
+    const updated = mapDimensionValueDTO(row);
+    set((s) => ({
+      dimensionValues: s.dimensionValues.map((v) => (v.id === updated.id ? updated : v)),
+    }));
+    return updated;
+  },
+
+  selectDimension: (dimensionId) => set({ selectedDimensionId: dimensionId }),
+
   refreshActiveCompany: async () => {
     const token = get().token;
     const companyId = get().activeCompanyId;
-
     if (!token || !companyId) return;
 
     await get().loadCompany(companyId);
     await get().loadCompanyUsers(companyId);
     await get().loadSheets(companyId);
+    await get().loadCalendar(companyId);
+    await get().loadDimensions(companyId);
+
+    const sel = get().selectedDimensionId;
+    if (sel) await get().loadDimensionValues(companyId, sel);
   },
 
   changeMyPassword: async (newPassword) => {
@@ -532,4 +848,33 @@ if (typeof patch.calendarSheetId === "number") {
 
   setSheet: (k) => set({ sheetKey: k }),
   setVersion: (id) => set({ selectedVersionId: id }),
+
+  importDimensionsExcel: async (companyId, file) => {
+  const token = get().token;
+  if (!token) throw new Error("Not logged in");
+  if (!file) throw new Error("File required");
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  const resp = await fetch(`${API_BASE}${PATHS.importDimensionsExcel(companyId)}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+
+if (!resp.ok) {
+  let detail = `Import failed (${resp.status})`;
+  try {
+    const j = await resp.json();
+    if (typeof j?.detail === "string") detail = j.detail;
+  } catch  {
+    // ignore JSON parse errors
+  }
+  throw new Error(detail);
+}
+
+  const data = (await resp.json()) as DimensionsImportResponse;
+  return data;
+},
 }));

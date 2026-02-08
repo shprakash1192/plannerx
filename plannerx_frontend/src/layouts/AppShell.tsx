@@ -1,4 +1,5 @@
-import { Outlet, useNavigate } from "react-router-dom";
+// AppShell.tsx
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AppBar,
   Box,
@@ -25,6 +26,9 @@ import BusinessIcon from "@mui/icons-material/Business";
 import PeopleIcon from "@mui/icons-material/People";
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import SettingsIcon from "@mui/icons-material/Settings";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import ViewQuiltIcon from "@mui/icons-material/ViewQuilt";
+import AccountTreeIcon from "@mui/icons-material/AccountTree";
 
 import { useAppStore } from "../store";
 
@@ -38,11 +42,12 @@ const SHEETS = [
 
 export default function AppShell() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const user = useAppStore((s) => s.user);
   const logout = useAppStore((s) => s.logout);
 
-  // Company context (SYSADMIN selects; company users are tunneled)
+  // Company context
   const companies = useAppStore((s) => s.companies);
   const activeCompanyId = useAppStore((s) => s.activeCompanyId);
   const selectCompany = useAppStore((s) => s.selectCompany);
@@ -52,7 +57,7 @@ export default function AppShell() {
   const selectedVersionId = useAppStore((s) => s.selectedVersionId);
   const setVersion = useAppStore((s) => s.setVersion);
 
-  // Navigation state
+  // Sheet nav state
   const sheetKey = useAppStore((s) => s.sheetKey);
   const setSheet = useAppStore((s) => s.setSheet);
 
@@ -62,18 +67,23 @@ export default function AppShell() {
   const canSeeAdmin = isSysAdmin || isCompanyAdmin;
   const hasActiveCompany = activeCompanyId != null;
 
-  // Show “Companies” ONLY when SYSADMIN has not selected a company yet
+  // SYSADMIN onboarding view (no company selected)
   const showCompaniesList = isSysAdmin && !hasActiveCompany;
 
-  // Show “Company Settings” when inside a company (SYSADMIN tunneled OR COMPANY_ADMIN)
-  const showCompanySettings = (isSysAdmin || isCompanyAdmin) && hasActiveCompany;
+  // Company-scoped admin (inside company)
+  const showCompanyAdmin = canSeeAdmin && hasActiveCompany;
 
   const activeCompany =
     hasActiveCompany ? companies.find((c) => c.id === activeCompanyId) ?? null : null;
 
+  const path = location.pathname;
+
+  const isOnAdminRoute = path.startsWith("/admin/");
+  const isOnModelRoute = path.startsWith("/model/");
+  const isOnSheetRoute = path.startsWith("/sheet/");
+
   const goHome = () => {
     setSheet(null);
-    // If SYSADMIN has no company, send to select-company
     if (isSysAdmin && !hasActiveCompany) navigate("/select-company");
     else navigate("/");
   };
@@ -112,10 +122,11 @@ export default function AppShell() {
 
         <Divider />
 
+        {/* MAIN NAV */}
         <List sx={{ px: 1 }}>
           {/* Home */}
           <ListItemButton
-            selected={!sheetKey}
+            selected={!isOnAdminRoute && !isOnModelRoute && !isOnSheetRoute && !sheetKey}
             onClick={goHome}
             sx={{ borderRadius: 2, mx: 1, my: 0.5 }}
           >
@@ -129,9 +140,8 @@ export default function AppShell() {
           {SHEETS.map((s) => (
             <ListItemButton
               key={s.key}
-              selected={sheetKey === s.key}
+              selected={isOnSheetRoute && sheetKey === s.key}
               onClick={() => {
-                // SYSADMIN without company shouldn't open sheets
                 if (isSysAdmin && !hasActiveCompany) {
                   navigate("/select-company");
                   return;
@@ -149,20 +159,21 @@ export default function AppShell() {
           ))}
         </List>
 
-        {/* Administration */}
+        {/* COMPANY ADMINISTRATION */}
         {canSeeAdmin && (
           <>
             <Divider sx={{ my: 1 }} />
             <Box sx={{ px: 2, pb: 0.5 }}>
               <Typography variant="caption" color="text.secondary">
-                Administration
+                Company Administration
               </Typography>
             </Box>
 
             <List sx={{ px: 1 }}>
-              {/* SYSADMIN: Companies list only BEFORE selecting a company */}
+              {/* SYSADMIN: Companies list only before selecting a company */}
               {showCompaniesList && (
                 <ListItemButton
+                  selected={path === "/admin/companies"}
                   onClick={() => navigate("/admin/companies")}
                   sx={{ borderRadius: 2, mx: 1, my: 0.5 }}
                 >
@@ -173,28 +184,78 @@ export default function AppShell() {
                 </ListItemButton>
               )}
 
-              {/* SYSADMIN (in company) OR COMPANY_ADMIN: Company Settings */}
-              {showCompanySettings && (
-                <ListItemButton
-                  onClick={() => navigate("/admin/company")}
-                  sx={{ borderRadius: 2, mx: 1, my: 0.5 }}
-                >
-                  <ListItemIcon>
-                    <SettingsIcon />
-                  </ListItemIcon>
-                  <ListItemText primary="Company Settings" />
-                </ListItemButton>
-              )}
+              {/* Company-scoped admin items only when inside a company */}
+              {showCompanyAdmin && (
+                <>
+                  <ListItemButton
+                    selected={path === "/admin/company-settings"}
+                    onClick={() => navigate("/admin/company-settings")}
+                    sx={{ borderRadius: 2, mx: 1, my: 0.5 }}
+                  >
+                    <ListItemIcon>
+                      <SettingsIcon />
+                    </ListItemIcon>
+                    <ListItemText primary="Company Settings" />
+                  </ListItemButton>
 
-              {/* Users (both SYSADMIN + COMPANY_ADMIN) */}
+                  <ListItemButton
+                    selected={path === "/admin/company-calendar"}
+                    onClick={() => navigate("/admin/company-calendar")}
+                    sx={{ borderRadius: 2, mx: 1, my: 0.5 }}
+                  >
+                    <ListItemIcon>
+                      <CalendarMonthIcon />
+                    </ListItemIcon>
+                    <ListItemText primary="Company Calendar" />
+                  </ListItemButton>
+
+                  <ListItemButton
+                    selected={path === "/admin/users"}
+                    onClick={() => navigate("/admin/users")}
+                    sx={{ borderRadius: 2, mx: 1, my: 0.5 }}
+                  >
+                    <ListItemIcon>
+                      <PeopleIcon />
+                    </ListItemIcon>
+                    <ListItemText primary="Users" />
+                  </ListItemButton>
+                </>
+              )}
+            </List>
+          </>
+        )}
+
+        {/* MODEL */}
+        {canSeeAdmin && hasActiveCompany && (
+          <>
+            <Divider sx={{ my: 1 }} />
+            <Box sx={{ px: 2, pb: 0.5 }}>
+              <Typography variant="caption" color="text.secondary">
+                Model
+              </Typography>
+            </Box>
+
+            <List sx={{ px: 1 }}>
               <ListItemButton
-                onClick={() => navigate("/admin/users")}
+                selected={path === "/model/sheets"}
+                onClick={() => navigate("/model/sheets")}
                 sx={{ borderRadius: 2, mx: 1, my: 0.5 }}
               >
                 <ListItemIcon>
-                  <PeopleIcon />
+                  <ViewQuiltIcon />
                 </ListItemIcon>
-                <ListItemText primary="Users" />
+                <ListItemText primary="Sheets" />
+              </ListItemButton>
+
+              <ListItemButton
+                selected={path === "/model/dimensions"}
+                onClick={() => navigate("/model/dimensions")}
+                sx={{ borderRadius: 2, mx: 1, my: 0.5 }}
+              >
+                <ListItemIcon>
+                  <AccountTreeIcon />
+                </ListItemIcon>
+                <ListItemText primary="Dimensions" />
               </ListItemButton>
             </List>
           </>
@@ -240,7 +301,7 @@ export default function AppShell() {
             <Box sx={{ flex: 1 }} />
 
             <Stack direction="row" spacing={1.5} alignItems="center">
-              {/* SYSADMIN: always allow “switch company” button */}
+              {/* SYSADMIN: switch company */}
               {isSysAdmin && (
                 <Tooltip title="Switch company">
                   <IconButton onClick={() => navigate("/select-company")}>
@@ -249,15 +310,15 @@ export default function AppShell() {
                 </Tooltip>
               )}
 
-              {/* SYSADMIN: company dropdown ONLY when not in a company yet */}
+              {/* SYSADMIN: company dropdown only when not in a company yet */}
               {isSysAdmin && !hasActiveCompany && (
                 <Select<string>
                   value={String(activeCompanyId ?? "")}
                   onChange={(e) => {
-                    const v = e.target.value; // string
+                    const v = e.target.value;
                     if (v === "") return;
                     selectCompany(Number(v));
-                    navigate("/"); // will enter the AppShell company context
+                    navigate("/");
                   }}
                   displayEmpty
                   sx={{ minWidth: 240 }}
@@ -273,13 +334,13 @@ export default function AppShell() {
                 </Select>
               )}
 
-              {/* Admin icon: route based on context */}
+              {/* Admin icon: jump to best admin page */}
               {canSeeAdmin && (
                 <Tooltip title="Administration">
                   <IconButton
                     onClick={() => {
                       if (showCompaniesList) navigate("/admin/companies");
-                      else if (showCompanySettings) navigate("/admin/company");
+                      else if (showCompanyAdmin) navigate("/admin/company-settings");
                       else navigate("/admin/users");
                     }}
                   >
@@ -288,7 +349,7 @@ export default function AppShell() {
                 </Tooltip>
               )}
 
-              {/* Planning version selector */}
+              {/* Version selector */}
               <Select<number>
                 value={selectedVersionId}
                 onChange={(e) => setVersion(Number(e.target.value))}

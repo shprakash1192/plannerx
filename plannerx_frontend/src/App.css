@@ -40,3 +40,12 @@
 .read-the-docs {
   color: #888;
 }
+
+.ag-theme-quartz {
+  --ag-background-color: #0b1020;
+  --ag-foreground-color: #e5e7eb;
+  --ag-header-background-color: #0f172a;
+  --ag-border-color: rgba(255,255,255,0.08);
+  --ag-row-hover-color: rgba(255,255,255,0.04);
+  --ag-selected-row-background-color: rgba(59,130,246,0.2);
+}

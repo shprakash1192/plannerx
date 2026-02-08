@@ -61,3 +61,12 @@ def get_current_user(
         )
 
     return user
+
+
+def require_company_admin_or_sysadmin(user: User = Depends(get_current_user)) -> User:
+    if user.role not in ("SYSADMIN", "COMPANY_ADMIN"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized (requires SYSADMIN or COMPANY_ADMIN)",
+        )
+    return user
